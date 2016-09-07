@@ -1,1 +1,1 @@
-# lamda_mailer
+I'm tired of running servers for static websites. Using S3/CloudFront is a much easier solution, but the biggest hurdle is the contact me page. This is a python script that can run on AWS Lamda behind AWS API gateway that allows an email to be sent from a static site. Plug in the variables, package it into a zip, and away you go.

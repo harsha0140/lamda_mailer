@@ -29,7 +29,7 @@ def lambda_handler(event, context):
     
     client = boto3.client('ses')
     
-    message = """The following message was sent from the operation graduate website
+    message = """The following message was sent from the website
     From: %(name)s
     Email: %(email)s
     Phone: %(phone)s

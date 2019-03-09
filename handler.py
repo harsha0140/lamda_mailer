@@ -1,39 +1,90 @@
 import boto3 
-import requests 
-
-# This script allows a static website hosted on S3 or Cloudfront to Send an Email through AWS API Gateway and AWS Lamda
-# This script can also prevent spam by using Google Recaptcha
-# This script takes a json-encoded string with the following keys:
-#   name : The name of the person the message is from
-#   email : The email address of the person the message is from
-#   phone : The phone number of the person the message is from
-#   message : The email body
-#   user : The destination email user (The portion before @)
-#   recaptcha_token : The token returned from Google Recaptcha
+import json
+import os
+from botocore.vendored import requests
 
 def lambda_handler(event, context):
+    print event
+    if event['queryStringParameters'] != None and 'ping' in event['queryStringParameters']:
+        if  event['queryStringParameters']['ping']=='gif':
+            return {
+                "statusCode": 200,
+                "headers": {
+                    'Content-Type': 'image/gif',
+                    "Access-Control-Allow-Origin": '*'
+                },
+                "body": "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+                "isBase64Encoded": True
+            }
+        else:
+            return {
+                "statusCode": 200,
+                "headers" : {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Origin": '*',
+                },
+                "body": json.dumps({
+                    'success':'true',
+            	    'message':'Pong'
+                } )
+            }
     
-    gSecret = '' #Enter Secret from https://www.google.com/recaptcha/ or disable captcha by removing lines 20-25
-    toDomain = '' #Enter the domain name to send the message (The portion of the email address after @)
-    fromAddress = '' #Enter the from address for the email. This must be verified by SES
-    emailSubject = '' #Subject line of the Email
+    errors = '';
+    inputNames = {'recaptcha_token':'Recaptcha',
+                  'inputName1':'Name',
+                  'inputEmail2':'Email Address',
+                  'inputBody4':'Message Body',
+                  'user':'user'
+    }
+    body = json.loads(event['body'])
+    for key, value in inputNames.iteritems():
+        if key not in body:
+            errors += value+' not provided<br/>'
+            
+    if len(errors):
+        return {
+            "statusCode": 200,
+            "headers" : {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                'success':'false',
+        	    'message':errors
+            } )
+        }
+        
+    body['message'] = os.environ['message']
+    myValues = body
     
-    gToken = event.pop('recaptcha_token',False);
+    gSecret = os.environ['gSecret'] #Enter Secret from https://www.google.com/recaptcha/ or disable captcha by removing lines 64-78
+    toDomain = os.environ['toDomain'] #Enter the domain name to send the message (The portion of the email address after @)
+    fromAddress = os.environ['fromAddress'] #Enter the from address for the email. This must be verified by SES
+    emailSubject = os.environ['emailSubject'] #Subject line of the Email
+    
+    gToken = myValues['recaptcha_token'];
     response = requests.post("https://www.google.com/recaptcha/api/siteverify", data = {"secret":gSecret,"response":gToken } )
-
     responsejson = response.json()
     if responsejson['success'] != True:
-        return responsejson
-    
-    toAddress = event.pop('user',False) + '@' + toDomain
+        return {
+            "statusCode": 200,
+            "headers" : {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": '*',
+            },
+            "body": json.dumps({
+                'success':'false',
+        	    'message':'Recaptcha Failed'
+            } )
+        }
+
+    toAddress = myValues['user'] + '@' + toDomain
     
     client = boto3.client('ses')
     
-    message = """The following message was sent from the website
-    From: %(name)s
-    Email: %(email)s
-    Phone: %(phone)s
-    Message: %(message)s""" % event
+    message = """%(message)s
+    From: %(inputName1)s
+    Email: %(inputEmail2)s
+    Message: %(inputBody4)s""" % myValues
     
     sesresponse = client.send_email(
         Source = fromAddress,
@@ -51,11 +102,18 @@ def lambda_handler(event, context):
             }
         },
         ReplyToAddresses=[
-            event['email']
+            myValues['inputEmail2']
         ]
     )
     
     return {
-        'success':'true',
-	'mail':'sent'
-    } 
+            "statusCode": 200,
+            "headers" : {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": '*',
+            },
+            "body": json.dumps({
+                'success':'true',
+        	    'message':'Message Sent'
+            } )
+        }

@@ -3,32 +3,46 @@ import json
 import os
 from botocore.vendored import requests
 
+def getReturn(type,body):
+    binary_types = ['image/gif']
+    ret = {
+        "statusCode": 200,
+        "headers": {
+            'Content-Type': type,
+            "Access-Control-Allow-Origin": '*'
+        },
+    }
+    if type=='application/json':
+        ret['body']=json.dumps(body)
+    else:
+        ret['body']=body
+    if type in binary_types:
+        ret['isBase64Encoded'] = True
+    return ret
+
+def checkCaptcha(token):
+    gSecret = os.environ['gSecret']
+    response = requests.post("https://www.google.com/recaptcha/api/siteverify", data = {"secret":gSecret,"response":token } )
+    responsejson = response.json()
+    if responsejson['success'] != True:
+        return False
+    else:
+        return True
+
 def lambda_handler(event, context):
-    print event
+    
     if event['queryStringParameters'] != None and 'ping' in event['queryStringParameters']:
         if  event['queryStringParameters']['ping']=='gif':
-            return {
-                "statusCode": 200,
-                "headers": {
-                    'Content-Type': 'image/gif',
-                    "Access-Control-Allow-Origin": '*'
-                },
-                "body": "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-                "isBase64Encoded": True
-            }
+            
+            return(getReturn('image/gif',"R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"))
+            
         else:
-            return {
-                "statusCode": 200,
-                "headers" : {
-                    "Content-Type": "application/json",
-                    "Access-Control-Allow-Origin": '*',
-                },
-                "body": json.dumps({
-                    'success':'true',
-            	    'message':'Pong'
-                } )
-            }
-    
+            
+            return(getReturn('application/json',{
+                'success':'true',
+            	'message':'Pong'
+            }))
+            
     errors = '';
     inputNames = {'recaptcha_token':'Recaptcha',
                   'inputName1':'Name',
@@ -37,46 +51,32 @@ def lambda_handler(event, context):
                   'user':'user'
     }
     body = json.loads(event['body'])
-    for key, value in inputNames.iteritems():
+    for key, value in inputNames.items():
         if key not in body:
             errors += value+' not provided<br/>'
             
     if len(errors):
-        return {
-            "statusCode": 200,
-            "headers" : {
-                "Content-Type": "application/json"
-            },
-            "body": json.dumps({
-                'success':'false',
-        	    'message':errors
-            } )
-        }
-        
+
+        return(getReturn('application/json',{
+            'success':'false',
+        	'message':errors
+        }))
+
     body['message'] = os.environ['message']
     myValues = body
     
-    gSecret = os.environ['gSecret'] #Enter Secret from https://www.google.com/recaptcha/ or disable captcha by removing lines 64-78
+    gSecret = os.environ['gSecret'] #Enter Secret from https://www.google.com/recaptcha/ or disable captcha by removing lines 20-25
     toDomain = os.environ['toDomain'] #Enter the domain name to send the message (The portion of the email address after @)
     fromAddress = os.environ['fromAddress'] #Enter the from address for the email. This must be verified by SES
     emailSubject = os.environ['emailSubject'] #Subject line of the Email
     
-    gToken = myValues['recaptcha_token'];
-    response = requests.post("https://www.google.com/recaptcha/api/siteverify", data = {"secret":gSecret,"response":gToken } )
-    responsejson = response.json()
-    if responsejson['success'] != True:
-        return {
-            "statusCode": 200,
-            "headers" : {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": '*',
-            },
-            "body": json.dumps({
-                'success':'false',
-        	    'message':'Recaptcha Failed'
-            } )
-        }
-
+    if checkCaptcha(myValues['recaptcha_token']) != True:
+        
+        return(getReturn('application/json',{
+            'success':'false',
+        	'message':'Recaptcha Failed'
+        }))
+        
     toAddress = myValues['user'] + '@' + toDomain
     
     client = boto3.client('ses')
@@ -106,14 +106,20 @@ def lambda_handler(event, context):
         ]
     )
     
-    return {
-            "statusCode": 200,
-            "headers" : {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Origin": '*',
-            },
-            "body": json.dumps({
-                'success':'true',
-        	    'message':'Message Sent'
-            } )
+    if 'MessageId' in sesresponse:
+    
+        d = {
+            'success':'true',
+        	'message':'Message Sent'
         }
+    
+    else:
+        
+        d = {
+            'success':'false',
+        	'message':'Message not sent. Internal Problem'
+        }
+   
+    return(getReturn('application/json',d))
+    
+   
